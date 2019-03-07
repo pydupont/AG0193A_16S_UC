@@ -17,7 +17,6 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(kableExtra)
 ```
 
 ## Libraries
@@ -40,14 +39,14 @@ library(ggpubr)
 
 The objects computed using DADA2 have been saved using the `caching` library and can be loaded using the same library. Here we can load the `phyloseq` object `ps` and the `data.frame` extracted from it `taxa.dt`.
 
-The object extracted here is from the Jervis-Bardy contamination corrected calculation.
-
 ```{r load, warning=F, message=F}
-# ps <- load.object("psc.nojb")$orig
 ps <- load.object("psc")$orig
-# taxa.dt <- psmelt(ps)
-save.object(taxa.dt)
-if(object.cached("taxa.dt")){taxa.dt <- load.object("taxa.dt")}
+if(object.cached("taxa.dt")){
+  taxa.dt <- load.object("taxa.dt")
+} else{
+  taxa.dt <- psmelt(ps)
+  save.object(taxa.dt)
+}
 ```
 ## Loading Metadata
 
@@ -60,52 +59,22 @@ if(!exists("taxa.dt")){
   taxa.dt <- psmelt(ps)
   save.object(taxa.dt)
 }
-metadata.df %>%
-  kable() %>% 
-  kable_styling() %>% 
-  scroll_box(width = "100%", height = "600px") 
 ```
 
 
 ## Separate UC samples
 
 ```{r}
-uc_samples <- c("GW180247","GW180419","GW180420","GW180421","GW180422","GW180423","GW180424","GW180425","GW180426","GW180427","GW180428", "GW1801011A
-", "GW180248")
+uc_samples <- c("GW180247","GW180419","GW180420","GW180421","GW180422","GW180423","GW180424","GW180425","GW180426","GW180427","GW180428", "GW1801011A", "GW180248")
 ps_uc <- prune_samples(sample_data(ps)$SampleID %in% uc_samples, ps)
 ```
-
-## Richness
-
-First, we need to compute the richness estimators. Here we use the `Shannon` and `Simpson` estimators.
-
-```{r warning=F, message=F}
-r <- as.data.frame(estimate_richness(ps_uc, measures=c("Shannon", "Simpson")))
-r$Sample <- row.names(r)
-r <- reshape2::melt(r)
-r <- merge(r, metadata.df, by.x="Sample", by.y="SampleID", all.x=T)
-```
-
-Using the computed estimators, we can plot the richness of the samples. Here we will split the samples by their `SampleType`
-
-```{r warning=F,fig.width=10, fig.height=8}
-r <- r %>% mutate(Blank=recode(Blank,"'no'='not Blank'"), Blank=recode(Blank,"'yes'='Blank'"))
-
-ggplot(r, aes(Sample, value)) +
-  facet_wrap(~variable, scales = "free", ncol=2) +
-  geom_violin(scale="count") +
-  geom_jitter(height=0, width=0.3, size=0.5) +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "bottom")
-
-```
-
 
 ## Diversity
 
 ### Filter low abundance taxa.
 
 ```{r}
-aggregation.level <- 'Order'
+aggregation.level <- 'Genus'
 
 dt <- taxa.dt %>% filter(Blank == "No", SampleID %in% uc_samples)
 top <- dt %>% 
@@ -137,6 +106,8 @@ palette <- colorRampPalette(brewer.pal(10,"Paired"))(colourCount)
 
 ##### Plot
 
+###### All samples
+
 ```{r, fig.width=8, fig.height=8}
 ggplot(dt.grouped, aes(SampleID, Abundance, fill = UQ(rlang::sym(aggregation.level)))) +
   geom_bar(stat = "identity", position = "stack") +
@@ -150,45 +121,62 @@ ggplot(dt.grouped, aes(SampleID, Abundance, fill = UQ(rlang::sym(aggregation.lev
   theme(legend.position="bottom")
 ```
 
+###### Only 3 samples
 
+The following code builds a plot using the same taxa set as for the complete plot by subsetting the `dt.grouped` data.frame. This doesn't change the distribution of the taxa.
 
-### Clustering - PCoA
+```{r, fig.width=8, fig.height=8}
+dt.grouped <- dt.grouped %>% filter(SampleID %in% c("GW180247", "GW180419", "GW180421"))
+ggplot(dt.grouped, aes(SampleID, Abundance, fill = UQ(rlang::sym(aggregation.level)))) +
+  geom_bar(stat = "identity", position = "stack") +
+  # facet_wrap(~SampleTypeAnalysed, ncol = 1, scales = "free_x") +
+  theme_minimal() +
+  scale_fill_manual(values = palette) +
+  xlab(NULL) +
+  ylab("Relative abundance") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank()) +
+  theme(legend.position="bottom")
+```
 
-#### Select samples
+The following code first subset the data then recomputes the taxa and build the abundance plot.
 
 ```{r}
-```{r}
-uc_samples <- c("GW180247","GW180419","GW180420","GW180421","GW180422","GW180423","GW180424","GW180425","GW180426","GW180427","GW180428", "GW1801011A
-", "GW180248")
-ps_uc_no_sediment <- prune_samples(!(sample_data(ps_uc)$SampleID %in% c("GW180247")), ps_uc)
 
-ord <- ordinate(ps_uc_no_sediment, "PCoA", "bray")
+dt <- taxa.dt %>%
+  filter(Blank == "No", SampleID %in% uc_samples) %>% 
+  filter(SampleID %in% c("GW180247", "GW180419", "GW180421"))
+
+top <- dt %>% 
+  group_by(UQ(rlang::sym(aggregation.level))) %>% 
+  summarise(Abundance=sum(Abundance)) %>% 
+  mutate(AbundanceRel = Abundance/sum(Abundance)) %>%
+  filter(AbundanceRel >= 0.01)
+
+dt.grouped <- dt %>%
+  filter(UQ(rlang::sym(aggregation.level)) %in% top$UQ(rlang::sym(aggregation.level)))  %>%
+  mutate(UQ(rlang::sym(aggregation.level)) := factor(UQ(rlang::sym(aggregation.level)), levels=unique(UQ(rlang::sym(aggregation.level))))) %>%
+  filter(!is.na(UQ(rlang::sym(aggregation.level)))) %>% # Remove NA
+  group_by(SampleID, UQ(rlang::sym(aggregation.level))) %>%
+  summarize(Abundance = sum(Abundance)) %>%
+  mutate(Abundance = Abundance/sum(Abundance) * 100) %>%
+  filter(!is.na(UQ(rlang::sym(aggregation.level))))
+
+colourCount <- length(unique(as.character(dt.grouped[[aggregation.level]])))
+palette <- colorRampPalette(brewer.pal(10,"Paired"))(colourCount)
 ```
 
-
-```{R, fig.width=10, fig.height=10}
-palette <- colorRampPalette(brewer.pal(10,"Paired"))(nlevels(factor(sample_data(ps_uc_no_sediment)$SampleID))+1)
-plot_ordination(ps_uc_no_sediment, ord, type="samples", color="SampleID") +
-  geom_point(size=4)+
-  scale_color_manual(values = palette) +
-  ggtitle("samples") +
-  theme(legend.position = "bottom")
+```{r, fig.width=8, fig.height=8}
+ggplot(dt.grouped, aes(SampleID, Abundance, fill = UQ(rlang::sym(aggregation.level)))) +
+  geom_bar(stat = "identity", position = "stack") +
+  # facet_wrap(~SampleTypeAnalysed, ncol = 1, scales = "free_x") +
+  theme_minimal() +
+  scale_fill_manual(values = palette) +
+  xlab(NULL) +
+  ylab("Relative abundance") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank()) +
+  theme(legend.position="bottom")
 ```
 
-### Clustering NMDS
-
-#### All samples
-
-```{r}
-ord <- ordinate(ps_uc_no_sediment, "NMDS", "bray")
-```
-
-
-```{R, fig.width=10, fig.height=10}
-palette <- colorRampPalette(brewer.pal(10,"Paired"))(nlevels(factor(sample_data(ps_uc_no_sediment)$SampleID))+1)
-plot_ordination(ps_uc_no_sediment, ord, type="samples", color="SampleID") +
-  geom_point(size=4)+
-  ggtitle("samples") +
-  theme(legend.position = "bottom")
-```
-
+Both plots are correct. The first one corresponds to the distribution of the taxa identified as the most abundant in all the samples while the second corresponds to the distribution of the the most abundant taxa in these three samples. It is not surpising to see that you have such a large difference between the plots because your conditions (and likely your communities) are very different. 
