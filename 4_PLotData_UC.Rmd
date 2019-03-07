@@ -1,8 +1,11 @@
 ---
-title: "Plot metagenomics data - Auckland Run2 - 16S"
+title: "Bacterial diversity in groundwater samples"
 author: "Pierre-Yves Dupont"
 date: "July 27, 2018"
 output:
+  word_document:
+    toc: yes
+    toc_depth: '2'
   html_document:
     css: my_css.css
     highlight: default
@@ -69,7 +72,7 @@ uc_samples <- c("GW180247","GW180419","GW180420","GW180421","GW180422","GW180423
 ps_uc <- prune_samples(sample_data(ps)$SampleID %in% uc_samples, ps)
 ```
 
-## Diversity
+## Diversity plots
 
 ### Filter low abundance taxa.
 
@@ -84,7 +87,7 @@ top <- dt %>%
   filter(AbundanceRel >= 0.01)
 ```
 
-#### Compute relative abundance 
+### Compute relative abundance 
 
 ```{r}
 dt.grouped <- dt %>%
@@ -97,16 +100,16 @@ dt.grouped <- dt %>%
   filter(!is.na(UQ(rlang::sym(aggregation.level))))
 ```
 
-#### Set the palette
+### Set the palette
 
 ```{r}
 colourCount <- length(unique(as.character(dt.grouped[[aggregation.level]])))
 palette <- colorRampPalette(brewer.pal(10,"Paired"))(colourCount)
 ```
 
-##### Plot
+### Plot
 
-###### All samples
+#### All samples
 
 ```{r, fig.width=8, fig.height=8}
 ggplot(dt.grouped, aes(SampleID, Abundance, fill = UQ(rlang::sym(aggregation.level)))) +
@@ -121,7 +124,7 @@ ggplot(dt.grouped, aes(SampleID, Abundance, fill = UQ(rlang::sym(aggregation.lev
   theme(legend.position="bottom")
 ```
 
-###### Only 3 samples
+#### Only 3 samples
 
 The following code builds a plot using the same taxa set as for the complete plot by subsetting the `dt.grouped` data.frame. This doesn't change the distribution of the taxa.
 
