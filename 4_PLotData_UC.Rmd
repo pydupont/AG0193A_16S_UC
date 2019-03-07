@@ -1,0 +1,194 @@
+---
+title: "Plot metagenomics data - Auckland Run2 - 16S"
+author: "Pierre-Yves Dupont"
+date: "July 27, 2018"
+output:
+  html_document:
+    css: my_css.css
+    highlight: default
+    number_sections: no
+    theme: cerulean
+    toc: yes
+    toc_depth: 2
+    toc_float:
+      collapsed: no
+      smooth_scroll: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(kableExtra)
+```
+
+## Libraries
+
+```{r libs, warning=FALSE, message=F}
+library(phyloseq); packageVersion("phyloseq")
+library(tidyverse)
+library(caching); packageVersion("caching")
+library(cowplot)
+library(assertthat)
+library(ggplot2)
+library(RColorBrewer)
+library(colorRamps)
+library(ggrepel)
+require(car)
+library(ggpubr)
+```
+
+## Loading data
+
+The objects computed using DADA2 have been saved using the `caching` library and can be loaded using the same library. Here we can load the `phyloseq` object `ps` and the `data.frame` extracted from it `taxa.dt`.
+
+The object extracted here is from the Jervis-Bardy contamination corrected calculation.
+
+```{r load, warning=F, message=F}
+# ps <- load.object("psc.nojb")$orig
+ps <- load.object("psc")$orig
+# taxa.dt <- psmelt(ps)
+save.object(taxa.dt)
+if(object.cached("taxa.dt")){taxa.dt <- load.object("taxa.dt")}
+```
+## Loading Metadata
+
+```{r, message=F, warning=F}
+metadata <- read_tsv("samples-metadata.tsv")
+metadata.df <- as.data.frame(metadata)
+rownames(metadata.df) <- metadata$SampleID
+sample_data(ps) <- metadata.df
+if(!exists("taxa.dt")){
+  taxa.dt <- psmelt(ps)
+  save.object(taxa.dt)
+}
+metadata.df %>%
+  kable() %>% 
+  kable_styling() %>% 
+  scroll_box(width = "100%", height = "600px") 
+```
+
+
+## Separate UC samples
+
+```{r}
+uc_samples <- c("GW180247","GW180419","GW180420","GW180421","GW180422","GW180423","GW180424","GW180425","GW180426","GW180427","GW180428", "GW1801011A
+", "GW180248")
+ps_uc <- prune_samples(sample_data(ps)$SampleID %in% uc_samples, ps)
+```
+
+## Richness
+
+First, we need to compute the richness estimators. Here we use the `Shannon` and `Simpson` estimators.
+
+```{r warning=F, message=F}
+r <- as.data.frame(estimate_richness(ps_uc, measures=c("Shannon", "Simpson")))
+r$Sample <- row.names(r)
+r <- reshape2::melt(r)
+r <- merge(r, metadata.df, by.x="Sample", by.y="SampleID", all.x=T)
+```
+
+Using the computed estimators, we can plot the richness of the samples. Here we will split the samples by their `SampleType`
+
+```{r warning=F,fig.width=10, fig.height=8}
+r <- r %>% mutate(Blank=recode(Blank,"'no'='not Blank'"), Blank=recode(Blank,"'yes'='Blank'"))
+
+ggplot(r, aes(Sample, value)) +
+  facet_wrap(~variable, scales = "free", ncol=2) +
+  geom_violin(scale="count") +
+  geom_jitter(height=0, width=0.3, size=0.5) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "bottom")
+
+```
+
+
+## Diversity
+
+### Filter low abundance taxa.
+
+```{r}
+aggregation.level <- 'Order'
+
+dt <- taxa.dt %>% filter(Blank == "No", SampleID %in% uc_samples)
+top <- dt %>% 
+  group_by(UQ(rlang::sym(aggregation.level))) %>% 
+  summarise(Abundance=sum(Abundance)) %>% 
+  mutate(AbundanceRel = Abundance/sum(Abundance)) %>%
+  filter(AbundanceRel >= 0.01)
+```
+
+#### Compute relative abundance 
+
+```{r}
+dt.grouped <- dt %>%
+  filter(UQ(rlang::sym(aggregation.level)) %in% top$UQ(rlang::sym(aggregation.level)))  %>%
+  mutate(UQ(rlang::sym(aggregation.level)) := factor(UQ(rlang::sym(aggregation.level)), levels=unique(UQ(rlang::sym(aggregation.level))))) %>%
+  filter(!is.na(UQ(rlang::sym(aggregation.level)))) %>% # Remove NA
+  group_by(SampleID, UQ(rlang::sym(aggregation.level))) %>%
+  summarize(Abundance = sum(Abundance)) %>%
+  mutate(Abundance = Abundance/sum(Abundance) * 100) %>%
+  filter(!is.na(UQ(rlang::sym(aggregation.level))))
+```
+
+#### Set the palette
+
+```{r}
+colourCount <- length(unique(as.character(dt.grouped[[aggregation.level]])))
+palette <- colorRampPalette(brewer.pal(10,"Paired"))(colourCount)
+```
+
+##### Plot
+
+```{r, fig.width=8, fig.height=8}
+ggplot(dt.grouped, aes(SampleID, Abundance, fill = UQ(rlang::sym(aggregation.level)))) +
+  geom_bar(stat = "identity", position = "stack") +
+  # facet_wrap(~SampleTypeAnalysed, ncol = 1, scales = "free_x") +
+  theme_minimal() +
+  scale_fill_manual(values = palette) +
+  xlab(NULL) +
+  ylab("Relative abundance") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank()) +
+  theme(legend.position="bottom")
+```
+
+
+
+### Clustering - PCoA
+
+#### Select samples
+
+```{r}
+```{r}
+uc_samples <- c("GW180247","GW180419","GW180420","GW180421","GW180422","GW180423","GW180424","GW180425","GW180426","GW180427","GW180428", "GW1801011A
+", "GW180248")
+ps_uc_no_sediment <- prune_samples(!(sample_data(ps_uc)$SampleID %in% c("GW180247")), ps_uc)
+
+ord <- ordinate(ps_uc_no_sediment, "PCoA", "bray")
+```
+
+
+```{R, fig.width=10, fig.height=10}
+palette <- colorRampPalette(brewer.pal(10,"Paired"))(nlevels(factor(sample_data(ps_uc_no_sediment)$SampleID))+1)
+plot_ordination(ps_uc_no_sediment, ord, type="samples", color="SampleID") +
+  geom_point(size=4)+
+  scale_color_manual(values = palette) +
+  ggtitle("samples") +
+  theme(legend.position = "bottom")
+```
+
+### Clustering NMDS
+
+#### All samples
+
+```{r}
+ord <- ordinate(ps_uc_no_sediment, "NMDS", "bray")
+```
+
+
+```{R, fig.width=10, fig.height=10}
+palette <- colorRampPalette(brewer.pal(10,"Paired"))(nlevels(factor(sample_data(ps_uc_no_sediment)$SampleID))+1)
+plot_ordination(ps_uc_no_sediment, ord, type="samples", color="SampleID") +
+  geom_point(size=4)+
+  ggtitle("samples") +
+  theme(legend.position = "bottom")
+```
+
