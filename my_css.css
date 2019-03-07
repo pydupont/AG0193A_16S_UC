@@ -1,0 +1,17 @@
+h1.title {
+  font-size: 54px;
+}
+
+h1{
+  font-size: 40px;
+  font-variant: small-caps;
+}
+
+h2{
+  margin-top: 40px;
+}
+
+div.level1 {
+  margin-top: 80px;
+  border-top: 1px solid black;
+}
