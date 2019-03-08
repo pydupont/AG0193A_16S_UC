@@ -23,7 +23,6 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ## Libraries
-## did my email address change?
 
 ```{r libs, warning=FALSE, message=F}
 library(phyloseq); packageVersion("phyloseq")
@@ -70,7 +69,6 @@ if(!exists("taxa.dt")){
 
 ```{r}
 uc_samples <- c("GW180247","GW180419","GW180420","GW180421","GW180422","GW180423","GW180424","GW180425","GW180426","GW180427","GW180428", "GW1801011A", "GW180248")
-#Uc_samples testing
 ps_uc <- prune_samples(sample_data(ps)$SampleID %in% uc_samples, ps)
 ```
 
